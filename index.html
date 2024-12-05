@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link 
+    rel="stylesheet" 
+    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+    crossorigin=""
+    />
+    <link rel="stylesheet" href="style.css">
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+    integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+    crossorigin=""></script>
+    <style>
+         #Map {
+         height: 600px; 
+        }
+         </style>
+    <title>Sạt Lở Đất</title>
+    <link rel="icon" href="favicon.ico" type = "image/x-icon"/>
+</head>
+<body>
+
+    <div id="Map">
+        <script>
+            const map = L.map('Map').setView([0,0], 10);
+            const tiles = L.tileLayer('https://{s}.google.com/vt?lyrs=p&x={x}&y={y}&z={z}',{
+    maxZoom: 20,
+    subdomains:['mt0','mt1','mt2','mt3']
+});
+            tiles.addTo(map);
+            async function getid() {
+                navigator.geolocation.getCurrentPosition(async (position) => {
+                    console.log(position.coords);
+                const lat = position.coords.latitude;
+                const lon = position.coords.longitude;
+                document.getElementById("latitude").textContent = lat;
+                document.getElementById("longitude").textContent = lon;
+                const marker = L.marker([ lat,lon ]).addTo(map);
+                marker.setLatLng([lat,lon]);
+                const weatherData = await getweather(lat, lon);
+                if (weatherData === 0) {
+                    marker.bindPopup(`Lỗi khi lấy thông tin`).openPopup();
+                    return;
+                }
+                const timestamp = weatherData.json.dt;
+                const date = new Date(timestamp * 1000);
+                const humid = ((weatherData.json.main.humidity)*0.45);
+                const slope = (weatherData.slope).toFixed(2);
+                let rainfall = (weatherData.json.rain) ? weatherData.json.rain['1h'] : 0;
+                const wind = Math.round(weatherData.json.wind.speed *3.6);
+                const soil = weatherData.soiltype.wrb_class_name;
+                const city = (weatherData.json.name).toLowerCase();
+                const population = await getHumanData(city);
+                const a = getslopeFactor(slope);
+                const b = getrainFactor(rainfall);
+                const c = getwindFactor(wind);
+                const d = getsoilFactor(soil);
+                const g = getsoilmoistureFactor(humid);
+                const hazard = calculatehazard(a,b,c,d,g);
+                const weatherContent = `
+                    <b>Thời tiết:</b> ${weatherData.json.weather[0].description}<br>
+                    <b>Nhiệt độ:</b> ${Math.round(weatherData.json.main.temp - 273.15)}°C<br>
+                    <b>Độ ẩm đất:</b> `+ Math.round(humid)+ `%<br>
+                    <b>Tốc độ gió:</b> `+ wind + `km/h<br>
+                    <b>Độ dốc:</b> `+ slope + `°<br>
+                    <b>Loại đất:</b> `+ soil + `<br>
+                    <b>Lượng mưa:</b> `+ rainfall + `mm/h<br>
+                    <b>Mật độ dân số:</b> `+ population + ` người<br>
+                    <b><span class = "danger">NGUY CƠ:</span></b> `+ hazard + `%<br>
+                    <b>Thời điểm:</b> ${date.toLocaleString()}</br>`;
+                if (hazard >= 70) {
+                    marker.bindPopup(`<b><span class="highlight">Vị Trí Của Bạn</span></b><br><b><span class="danger">VÙNG NGUY HIỂM!!!</span></b><br>`+weatherContent).openPopup();
+                } else if (hazard >=55 && hazard <70) {
+                    marker1.bindPopup(`<b><span class="might">Vùng Có Nguy Cơ.</span></b><br>`+weatherContent).openPopup();
+                } else {
+                    marker.bindPopup(`<b><span class="highlight">Vị Trí Của Bạn</span></b><br><b><span class="safe">Vùng An Toàn.</span></b><br>`+weatherContent).openPopup();
+                }
+                map.setView([lat,lon],13)
+                })};
+                
+            if ("geolocation" in navigator) {
+                console.log('geolocaton available')
+                getid();
+            } else {
+                console.log('geolocation not available')
+                }
+            const circle = L.circle([16.480854,107.6204], {
+                color: 'red',
+                fillColor: '#f03',
+                fillOpacity: 0.5,
+                radius: 1500
+                }).addTo(map);
+            const marker1 = L.marker();
+            const circle1 = L.circle([0,0], {
+                color: 'gray',
+                fillColor: 'gray',
+                fillOpacity: 0.5,
+                radius: 200
+            });
+
+            async function onMapClick(e) {
+                document.getElementById("ways-container").innerHTML = '';
+                if (marker1) {
+                    map.removeLayer(marker1);
+                    map.removeLayer(circle1);
+                }
+                const lat = e.latlng.lat;
+                const lon = e.latlng.lng;
+                getweatherbylatlon(lat,lon);
+            }
+            try{map.on('click', onMapClick)}
+            catch (error) {
+                console.error('Lỗi khi lấy dữ liệu:', error.message)
+            };
+            async function getweatherbylatlon(lat,lon) {
+                document.getElementById("ways-container").innerHTML = '';
+                map.setView([lat,lon],13)
+                marker1.setLatLng([lat,lon]);
+                marker1.addTo(map);
+                circle1.setLatLng([lat,lon])
+                circle1.addTo(map);
+                const weatherData = await getweather(lat, lon);
+                if (weatherData === 0) {
+                    marker.bindPopup(`Lỗi khi lấy thông tin`).openPopup();
+                    return;
+                }
+                const timestamp = weatherData.json.dt;
+                const date = new Date(timestamp * 1000);
+                const humid = ((weatherData.json.main.humidity)*0.45);
+                const slope = (weatherData.slope).toFixed(2);
+                let rainfall = (weatherData.json.rain) ? weatherData.json.rain['1h'] : 0;
+                const wind = Math.round(weatherData.json.wind.speed *3.6);
+                const soil = weatherData.soiltype.wrb_class_name;
+                const city = (weatherData.json.name).toLowerCase();
+                const population = await getHumanData(city);
+                const a = getslopeFactor(slope);
+                const b = getrainFactor(rainfall);
+                const c = getwindFactor(wind);
+                const d = getsoilFactor(soil);
+                const g = getsoilmoistureFactor(humid);
+                const hazard = calculatehazard(a,b,c,d,g);
+                const weatherContent = `
+                    <b>Thời tiết:</b> ${weatherData.json.weather[0].description}<br>
+                    <b>Nhiệt độ:</b> ${Math.round(weatherData.json.main.temp - 273.15)}°C<br>
+                    <b>Độ ẩm đất:</b> `+ Math.round(humid)+ `%<br>
+                    <b>Tốc độ gió:</b> `+ wind + `km/h<br>
+                    <b>Độ dốc:</b> `+ slope + `°<br>
+                    <b>Loại đất:</b> `+ soil + `<br>
+                    <b>Lượng mưa:</b> `+ rainfall + `mm/h<br>
+                    <b>Mật độ dân số:</b> `+ population + ` người<br>
+                    <b><span class = "danger">NGUY CƠ:</span></b> `+ hazard + `%<br>
+                    <b>Thời điểm:</b> ${date.toLocaleString()}</br>`;
+                if (hazard >= 70) {
+                    marker1.bindPopup(`<b><span class="danger">VÙNG NGUY HIỂM!!!</span></b><br>`+weatherContent).openPopup();
+                } else if (hazard >=55 && hazard <70) {
+                    marker1.bindPopup(`<b><span class="might">Vùng Có Nguy Cơ.</span></b><br>`+weatherContent).openPopup();
+                } else {
+                    marker1.bindPopup(`<b><span class="safe">Vùng An Toàn.</span></b><br>`+weatherContent).openPopup();
+                }
+            }
+        </script>
+            <script src="script.js"></script>
+            <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    </div>
+    <p>
+        <b>Vị Trí Hiện Tại</b></br>
+        Kinh độ : <span id ="latitude"></span></br>
+        Vĩ độ : <span id ="longitude"></span></br>
+        <b>Tìm Vị Trí</b></br>
+        latitude: <input type="text" id="latitude1" placeholder="Hãy Điền Vào Kinh Độ"></br>
+        longitude: <input type="text" id="longitude1" placeholder="Hãy Điền Vào Vĩ Độ">
+        <button onclick="getweatherbylatlon(Number(document.getElementById('latitude1').value),Number(document.getElementById('longitude1').value))"><b>Tìm</b></button></p><br>
+    </p>
+    <h2>Thông Tin Về Địa Điểm:</h2>
+    <div id="ways-container"></div>
+</body>
+</html>
