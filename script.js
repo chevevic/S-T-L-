@@ -39,10 +39,6 @@ async function getweather(lat,lon) {
   relation["building"](around:500, ${lat}, ${lon});
   node["building"](around:500, ${lat}, ${lon});
 
-  way["place"](around:500, ${lat}, ${lon});
-  relation["place"](around:500, ${lat}, ${lon});
-  node["place"](around:500, ${lat}, ${lon});
-
   way["power"](around:500, ${lat}, ${lon});
   relation["power"](around:500, ${lat}, ${lon});
   node["power"](around:500, ${lat}, ${lon});
@@ -233,24 +229,26 @@ function convertDateFormat(dateString) {
 function calculateDensity(data, lat, lon, radius) {
     let buildingCount = 0;
     let highwayCount = 0;
-    let placeCount = 0;
     let powerCount = 0;
+    let total = 0;
+
+    // Tính mật độ của từng loại đối tượng trong phạm vi radius
     data.elements.forEach(element => {
-      const elementLat = element.lat;
-      const elementLon = element.lon;
-      const distance = getDistance(lat, lon, elementLat, elementLon);  // Tính khoảng cách từ (lat, lon)
-      if (distance <= radius) {
-        if (element.tags && element.tags.building) buildingCount++;
-        if (element.tags && element.tags.highway) highwayCount++;
-        if (element.tags && element.tags.place) placeCount++;
-        if (element.tags && element.tags.power) powerCount++;
-      }
-    });
-    return {
-      buildingDensity: buildingCount / (Math.PI * radius * radius),  // Mật độ xây dựng/km²
-      highwayDensity: highwayCount / (Math.PI * radius * radius),    // Mật độ đường/xã
-      placeDensity: placeCount / (Math.PI * radius * radius),        // Mật độ khu vực/xã
-      powerDensity: powerCount / (Math.PI * radius * radius),        // Mật độ cơ sở hạ tầng năng lượng
-    };
-  }
-  
+        const elementLat = element.lat;
+        const elementLon = element.lon;
+        distance = getDistance(lat,lon,elementLat,elementLon);
+        if (distance < radius) {
+            if (element.tags && element.tags.building) buildingCount++;
+            if (element.tags && element.tags.highway) highwayCount++;
+            if (element.tags && element.tags.power) powerCount++;
+    }})
+    // Tính mật độ các loại đối tượng
+    const buildingDensity = buildingCount / (Math.PI * radius * radius);
+    const highwayDensity = highwayCount / (Math.PI * radius * radius);
+    const powerDensity = powerCount / (Math.PI * radius * radius);
+
+    // Tính tổng mật độ
+    total = (buildingDensity + highwayDensity + powerDensity)*1000000;
+
+    return total;
+}
